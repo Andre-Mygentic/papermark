@@ -26,6 +26,7 @@ export const config = {
 export const authOptions: NextAuthOptions = {
   pages: {
     error: "/login",
+    signIn: "/login",
   },
   providers: [
     GoogleProvider({
@@ -82,7 +83,10 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt" },
+  session: { 
+    strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
   cookies: {
     sessionToken: {
       name: `${isProduction ? "__Secure-" : ""}next-auth.session-token`,
@@ -90,14 +94,19 @@ export const authOptions: NextAuthOptions = {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        // When working on localhost, the cookie domain must be omitted entirely (https://stackoverflow.com/a/1188145)
-        // Don't set domain - let the browser handle it based on the current domain
         secure: isProduction,
+        domain: undefined, // Let NextAuth determine the domain
       },
     },
   },
   callbacks: {
-    signIn: async ({ user }) => {
+    signIn: async ({ user, account, profile }) => {
+      console.log("SignIn callback:", { 
+        user: { id: user.id, email: user.email, name: user.name },
+        account: { provider: account?.provider, type: account?.type },
+        profile: { email: profile?.email }
+      });
+      
       if (!user.email || (await isBlacklistedEmail(user.email))) {
         await identifyUser(user.email ?? user.id);
         await trackAnalytics({
@@ -112,12 +121,19 @@ export const authOptions: NextAuthOptions = {
 
     jwt: async (params) => {
       const { token, user, trigger } = params;
-      if (!token.email) {
-        return {};
-      }
+      
+      // On initial sign in
       if (user) {
         token.user = user;
+        token.email = user.email;
       }
+      
+      // Return the token if no email (but don't return empty object)
+      if (!token.email) {
+        console.error("JWT callback: No email in token", { token, user });
+        return token;
+      }
+      
       // refresh the user data
       if (trigger === "update") {
         const user = token?.user as CustomUser;
@@ -142,11 +158,19 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     session: async ({ session, token }) => {
-      (session.user as CustomUser) = {
-        id: token.sub,
-        // @ts-ignore
-        ...(token || session).user,
-      };
+      console.log("Session callback:", { 
+        sessionUser: session.user,
+        tokenSub: token.sub,
+        tokenUser: token.user 
+      });
+      
+      if (token) {
+        (session.user as CustomUser) = {
+          id: token.sub,
+          // @ts-ignore
+          ...(token.user || session.user),
+        };
+      }
       return session;
     },
   },
