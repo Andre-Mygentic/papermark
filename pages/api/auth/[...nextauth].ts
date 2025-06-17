@@ -16,6 +16,7 @@ import { subscribe } from "@/lib/unsend";
 import { generateChecksum } from "@/lib/utils/generate-checksum";
 
 const VERCEL_DEPLOYMENT = !!process.env.VERCEL_URL;
+const isProduction = process.env.NODE_ENV === "production";
 
 // This function can run for a maximum of 180 seconds
 export const config = {
@@ -84,14 +85,14 @@ export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
   cookies: {
     sessionToken: {
-      name: `${VERCEL_DEPLOYMENT ? "__Secure-" : ""}next-auth.session-token`,
+      name: `${isProduction ? "__Secure-" : ""}next-auth.session-token`,
       options: {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
         // When working on localhost, the cookie domain must be omitted entirely (https://stackoverflow.com/a/1188145)
         // Don't set domain - let the browser handle it based on the current domain
-        secure: VERCEL_DEPLOYMENT,
+        secure: isProduction,
       },
     },
   },
