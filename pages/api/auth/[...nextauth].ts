@@ -16,7 +16,6 @@ import { subscribe } from "@/lib/unsend";
 import { generateChecksum } from "@/lib/utils/generate-checksum";
 
 const VERCEL_DEPLOYMENT = !!process.env.VERCEL_URL;
-const isProduction = process.env.NODE_ENV === "production";
 
 // This function can run for a maximum of 180 seconds
 export const config = {
@@ -26,7 +25,6 @@ export const config = {
 export const authOptions: NextAuthOptions = {
   pages: {
     error: "/login",
-    signIn: "/login",
   },
   providers: [
     GoogleProvider({
@@ -83,30 +81,21 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   adapter: PrismaAdapter(prisma),
-  session: { 
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-  },
+  session: { strategy: "jwt" },
   cookies: {
     sessionToken: {
-      name: `${isProduction ? "__Secure-" : ""}next-auth.session-token`,
+      name: `${VERCEL_DEPLOYMENT ? "__Secure-" : ""}next-auth.session-token`,
       options: {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: isProduction,
-        domain: undefined, // Let NextAuth determine the domain
+        secure: VERCEL_DEPLOYMENT,
+        // domain is omitted to let NextAuth handle it
       },
     },
   },
   callbacks: {
-    signIn: async ({ user, account, profile }) => {
-      console.log("SignIn callback:", { 
-        user: { id: user.id, email: user.email, name: user.name },
-        account: { provider: account?.provider, type: account?.type },
-        profile: { email: profile?.email }
-      });
-      
+    signIn: async ({ user }) => {
       if (!user.email || (await isBlacklistedEmail(user.email))) {
         await identifyUser(user.email ?? user.id);
         await trackAnalytics({
@@ -130,7 +119,6 @@ export const authOptions: NextAuthOptions = {
       
       // Return the token if no email (but don't return empty object)
       if (!token.email) {
-        console.error("JWT callback: No email in token", { token, user });
         return token;
       }
       
@@ -158,13 +146,7 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     session: async ({ session, token }) => {
-      console.log("Session callback:", { 
-        sessionUser: session.user,
-        tokenSub: token.sub,
-        tokenUser: token.user 
-      });
-      
-      if (token) {
+      if (token && token.sub) {
         (session.user as CustomUser) = {
           id: token.sub,
           // @ts-ignore
