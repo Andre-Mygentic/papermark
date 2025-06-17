@@ -146,12 +146,13 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     session: async ({ session, token }) => {
-      if (token && token.sub) {
-        (session.user as CustomUser) = {
-          id: token.sub,
+      if (token) {
+        session.user = {
+          ...session.user,
           // @ts-ignore
-          ...(token.user || session.user),
-        };
+          ...(token.user || {}),
+          id: token.sub,
+        } as CustomUser;
       }
       return session;
     },
